@@ -1,11 +1,6 @@
 {
-  "name": "museado-chat",
-  "description": "Self-hosted Mattermost (Team Edition) for Museado — hosts the Agents plugin that calls zm's OpenAI-compatible persona shim",
-  "keywords": ["mattermost", "chat", "agents", "ai", "museado"],
-  "website": "https://chat.museado.org",
-  "scripts": {
-    "dokku": {
-      "predeploy": "echo 'REQUIRED before first deploy: dokku postgres:create museado-chat && dokku postgres:link museado-chat museado-chat; and storage mounts for /mattermost/{data,config,plugins,client/plugins} — see README.'"
-    }
-  }
+  "name": "mattermost",
+  "description": "Self-hosted Mattermost (Team Edition) hosting the Agents plugin that calls the survos/ai-chat-bundle OpenAI-compatible persona shim. Deployed at chat.survos.com.",
+  "keywords": ["mattermost", "chat", "agents", "ai"],
+  "website": "https://chat.survos.com"
 }
