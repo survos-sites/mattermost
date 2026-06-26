@@ -1,0 +1,54 @@
+# LOCAL dev stack only. Prod (Dokku) does NOT use this file — there Postgres is
+# the dokku-postgres plugin and persistence is `dokku storage:mount` (see README).
+# Same IMAGE both places; different wiring around it.
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mmuser
+      POSTGRES_PASSWORD: mmuser_password
+      POSTGRES_DB: mattermost
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mmuser -d mattermost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mattermost:
+    build: .                       # uses ./Dockerfile (pins the version)
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8065:8065"
+    # Linux: make the host (where zm's shim runs) reachable as host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "postgres://mmuser:mmuser_password@db:5432/mattermost?sslmode=disable&connect_timeout=10"
+      MM_SERVICESETTINGS_SITEURL: "http://localhost:8065"
+      # Plugins: enable, allow uploads (for trying newer plugin builds), and
+      # auto-install the bundled Agents plugin on first boot.
+      MM_PLUGINSETTINGS_ENABLE: "true"
+      MM_PLUGINSETTINGS_ENABLEUPLOADS: "true"
+      MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS: "true"
+    volumes:
+      - mm-data:/mattermost/data
+      - mm-logs:/mattermost/logs
+      - mm-config:/mattermost/config
+      - mm-plugins:/mattermost/plugins
+      - mm-client-plugins:/mattermost/client/plugins
+
+volumes:
+  pgdata:
+  mm-data:
+  mm-logs:
+  mm-config:
+  mm-plugins:
+  mm-client-plugins:
