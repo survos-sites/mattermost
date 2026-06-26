@@ -1,77 +1,72 @@
-# museado-chat — self-hosted Mattermost + Agents plugin
+# mattermost — self-hosted Mattermost + Agents plugin
 
-Self-hosted Mattermost (Team Edition, free) for `chat.museado.org`. Hosts the
-**Agents** plugin, which calls zm's OpenAI-compatible persona shim
-(`POST /v1/chat/completions`) to answer `@Curator` / `@Scholar` / `@Librarian`
-mentions with RAG over folio. See `survos-sites/scanseum#7`.
+Self-hosted Mattermost (Team Edition, free) hosting the **Agents** plugin, which
+calls a `survos/ai-chat-bundle` OpenAI-compatible persona shim to answer
+`@Curator` / `@Scholar` / `@Librarian` mentions with RAG. See `survos-sites/scanseum#7`.
 
-**Direction of data flow:** Mattermost *calls* zm. zm holds the Anthropic/OpenAI
-key and the agents; Mattermost only needs the shim URL + a shared bearer token.
+**Live:** https://chat.survos.com (Dokku). *(Not under `*.museado.org` — zm owns that
+Dokku wildcard for tenants like `nara.museado.org`; chat lives on survos.com.)*
+
+**Data flow:** Mattermost *calls* the app. The app holds the model key + agents;
+Mattermost only needs the shim URL + a shared bearer token.
 
 ```
-@Curator …  →  Mattermost Agents plugin  →  POST {zm}/v1/chat/completions  →  RAG + model  →  reply posted to thread
+@Curator …  →  Agents plugin  →  POST {app}/v1/chat/completions  →  RAG + model  →  reply
 ```
 
 ## Versions (pinned)
 
-- **Server:** `mattermost/mattermost-team-edition:11.8.2` (in `Dockerfile`).
-  The `FROM` tag is the version pin — bump it, commit, redeploy.
-- **Agents plugin:** the one *bundled* with 11.8.2 (auto-installed via
-  `MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true`). No manual download.
-  - The standalone `mattermost-plugin-agents` v2.4.x requires server **11.9.0+**
-    (only an RC today). To use it, bump the server to `11.9.0-rc2` *or* drop the
-    plugin's `*-linux-amd64.tar.gz` into `plugins/` and uncomment the `COPY` in
-    the Dockerfile. Stick with the bundled plugin until 11.9 goes stable.
+- **Server:** `mattermost/mattermost-team-edition:11.8.2` (`Dockerfile`). The `FROM`
+  tag is the version pin — bump it, commit, redeploy.
+- **Agents plugin:** the one bundled with 11.8.2 (`mattermost-ai` v2.0.5, auto-installed
+  via `MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true`). The standalone
+  `mattermost-plugin-agents` v2.4.x needs server 11.9.0+ (RC only) — stay on the
+  bundled plugin until 11.9 is stable.
 
 ## Local (docker-compose)
 
 ```bash
 docker compose up -d --build
-docker compose logs -f mattermost      # wait for "Server is listening on :8065"
-open http://localhost:8065             # create the first admin account
+open http://localhost:8065        # create the first admin account
 ```
+Note: the Symfony Mattermost notifier is https-only, so local plain-http can't be
+driven by `ai-chat-bundle`'s `mm:post` — use the live https deploy below for that.
 
-Then in **System Console → Plugins → Agents**:
-1. Enable the plugin.
-2. Add an **OpenAI-Compatible** AI service:
-   - URL: `http://host.docker.internal:8000/v1` (zm dev server on the host)
-   - API key: the shared bearer token zm checks
-   - Model: the persona id zm routes on (e.g. `curator`)
-   - **Use Responses API: off** (we expose classic `/v1/chat/completions`)
-3. Register the bot(s) and `@`-mention one in a channel.
-
-`host.docker.internal` resolves on Linux because of the `extra_hosts:
-host-gateway` line in the compose file.
-
-Reset everything: `docker compose down -v` (drops the named volumes).
-
-## Dokku (prod) — different wiring, same image
+## Dokku deploy (how chat.survos.com was set up)
 
 ```bash
-# one-time
-dokku apps:create museado-chat
-dokku postgres:create museado-chat
-dokku postgres:link  museado-chat museado-chat          # sets DATABASE_URL
-dokku config:set museado-chat \
-  MM_SQLSETTINGS_DRIVERNAME=postgres \
-  MM_SERVICESETTINGS_SITEURL=https://chat.museado.org \
-  MM_PLUGINSETTINGS_ENABLE=true \
-  MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true
+H=dokku@ssh.survos.com
+ssh $H apps:create mattermost
+ssh $H postgres:create mattermost-db
+ssh $H postgres:link mattermost-db mattermost          # sets DATABASE_URL
 # Mattermost wants MM_SQLSETTINGS_DATASOURCE, not DATABASE_URL — map it:
-dokku config:set museado-chat MM_SQLSETTINGS_DATASOURCE="$(dokku config:get museado-chat DATABASE_URL)?sslmode=disable"
-dokku ports:set museado-chat http:80:8065 https:443:8065
+ssh $H "config:set --no-restart mattermost \
+  MM_SQLSETTINGS_DRIVERNAME=postgres \
+  'MM_SQLSETTINGS_DATASOURCE=<DATABASE_URL>?sslmode=disable&connect_timeout=10' \
+  MM_SERVICESETTINGS_SITEURL=https://chat.survos.com \
+  MM_PLUGINSETTINGS_ENABLE=true \
+  MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true"
+ssh $H domains:set mattermost chat.survos.com
+ssh $H ports:add  mattermost http:80:8065
 
-# PERSISTENCE — without these, redeploy wipes uploads/config/plugins:
-for d in data config plugins client-plugins; do
-  dokku storage:mount museado-chat "/var/lib/dokku/data/storage/museado-chat-$d:/mattermost/${d/client-/client/}"
-done
+git remote add dokku dokku@ssh.survos.com:mattermost
+git push dokku main                                    # builds the Dockerfile, deploys
 
-git remote add dokku dokku@<host>:museado-chat
-git push dokku main
-dokku letsencrypt:enable museado-chat
+ssh $H letsencrypt:set    mattermost email tac@museado.org
+ssh $H letsencrypt:enable mattermost                   # http-01, valid cert on origin
 ```
 
-> ⚠️ The plugin's AI-service config (endpoint URL, bearer, persona bots) is
-> nested JSON not cleanly set via `MM_*` env vars — configure it once in the
-> System Console UI. It persists in the mounted `/mattermost/config`. Treat that
-> as state, or export `config.json` and bake a baseline into the image later.
+### Cloudflare edge
+
+`*.survos.com` is Cloudflare-proxied with **Flexible** SSL, which loops against Dokku's
+forced https. Fix: add a **DNS-only (grey-cloud) A record** `chat → 5.161.107.103` in
+Cloudflare. A specific record disables the wildcard for `chat` (drops the proxied
+IPv6 too), so it resolves straight to the origin with the Let's Encrypt cert.
+
+### Not yet done
+
+- **Persistence:** no `dokku storage:mount` yet — uploads/config/plugins are ephemeral
+  and reset on redeploy. Add mounts for `/mattermost/{data,config,plugins,client/plugins}`
+  (mind the uid-2000 ownership) before relying on it.
+- First admin account + the Agents AI-service config (point it at the `ai-chat-bundle`
+  shim) are done in the System Console after the edge is reachable.
