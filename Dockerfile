@@ -15,5 +15,26 @@ FROM mattermost/mattermost-team-edition:11.9.0
 # Place to bake plugins / a baseline config.json later:
 # COPY plugins/mattermost-plugin-agents-*-linux-amd64.tar.gz /mattermost/prepackaged_plugins/
 
+# Outbound email (password resets, invites, verification) via Brevo's SMTP
+# relay. Same account/settings in both local and prod (same image, per the
+# docker-compose.yml comment) so they're baked in here -- only the actual
+# secret (SMTPPASSWORD) is a runtime env var (compose .env locally, `dokku
+# config:set` in prod).
+ENV MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS=true \
+    MM_EMAILSETTINGS_REQUIREEMAILVERIFICATION=false \
+    MM_EMAILSETTINGS_FEEDBACKNAME="Museado Chat" \
+    MM_EMAILSETTINGS_FEEDBACKEMAIL=tacman@gmail.com \
+    MM_EMAILSETTINGS_REPLYTOADDRESS=tacman@gmail.com \
+    MM_EMAILSETTINGS_SMTPSERVER=smtp-relay.brevo.com \
+    MM_EMAILSETTINGS_SMTPPORT=465 \
+    MM_EMAILSETTINGS_SMTPUSERNAME=tacman@gmail.com \
+    MM_EMAILSETTINGS_CONNECTIONSECURITY=TLS \
+    # Distinct from Username/Password being set -- Mattermost's persisted
+    # config.json defaults this to false from before SMTP was configured at
+    # all, and env-var overlay won't touch it unless set explicitly here.
+    # Without it, Mattermost silently skips AUTH and MAIL FROM gets
+    # rejected by Brevo with "502 5.7.0 Please authenticate first".
+    MM_EMAILSETTINGS_ENABLESMTPAUTH=true
+
 # Mattermost listens here; Dokku maps 80->8065 (see app.json).
 EXPOSE 8065
