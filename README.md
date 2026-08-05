@@ -16,12 +16,11 @@ Mattermost only needs the shim URL + a shared bearer token.
 
 ## Versions (pinned)
 
-- **Server:** `mattermost/mattermost-team-edition:11.8.2` (`Dockerfile`). The `FROM`
+- **Server:** `mattermost/mattermost-team-edition:11.9.0` (`Dockerfile`). The `FROM`
   tag is the version pin — bump it, commit, redeploy.
-- **Agents plugin:** the one bundled with 11.8.2 (`mattermost-ai` v2.0.5, auto-installed
-  via `MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true`). The standalone
-  `mattermost-plugin-agents` v2.4.x needs server 11.9.0+ (RC only) — stay on the
-  bundled plugin until 11.9 is stable.
+- **Agents plugin:** the one bundled with 11.9.0 (`mattermost-ai` v2.4.2, auto-installed
+  via `MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true`) — up from v2.0.5 on the
+  old 11.8.2 pin.
 
 ## Local (docker-compose)
 

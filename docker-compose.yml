@@ -38,6 +38,24 @@ services:
       MM_PLUGINSETTINGS_ENABLE: "true"
       MM_PLUGINSETTINGS_ENABLEUPLOADS: "true"
       MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS: "true"
+      # Outbound email (password resets, invites, verification) via Brevo's SMTP
+      # relay. Password comes from a local .env (gitignored) — see .env.example.
+      MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS: "true"
+      MM_EMAILSETTINGS_REQUIREEMAILVERIFICATION: "false"
+      MM_EMAILSETTINGS_FEEDBACKNAME: "Museado Chat"
+      MM_EMAILSETTINGS_FEEDBACKEMAIL: "tacman@gmail.com"
+      MM_EMAILSETTINGS_REPLYTOADDRESS: "tacman@gmail.com"
+      MM_EMAILSETTINGS_SMTPSERVER: "smtp-relay.brevo.com"
+      MM_EMAILSETTINGS_SMTPPORT: "465"
+      MM_EMAILSETTINGS_SMTPUSERNAME: "tacman@gmail.com"
+      MM_EMAILSETTINGS_SMTPPASSWORD: "${BREVO_SMTP_PASSWORD:?set BREVO_SMTP_PASSWORD in .env}"
+      MM_EMAILSETTINGS_CONNECTIONSECURITY: "TLS"
+      # Distinct from Username/Password being set -- Mattermost's persisted
+      # config.json defaults this to false from before SMTP was configured at
+      # all, and env-var overlay won't touch it unless set explicitly here.
+      # Without it, Mattermost silently skips AUTH and MAIL FROM gets
+      # rejected by Brevo with "502 5.7.0 Please authenticate first".
+      MM_EMAILSETTINGS_ENABLESMTPAUTH: "true"
     volumes:
       - mm-data:/mattermost/data
       - mm-logs:/mattermost/logs
