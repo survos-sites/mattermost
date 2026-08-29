@@ -1,11 +1,21 @@
 # LOCAL dev stack only. Prod (Dokku) does NOT use this file — there Postgres is
 # the dokku-postgres plugin and persistence is `dokku storage:mount` (see README).
 # Same IMAGE both places; different wiring around it.
+#
+# ON DEMAND. Mattermost runs remotely at https://chat.survos.com and that is what
+# you should be using day to day. `restart: "no"` (rather than unless-stopped) is
+# deliberate: it keeps this stack from coming back on boot or on a docker daemon
+# restart after you have finished with it. Start it only to develop against a
+# newer version or reproduce a bug:
+#
+#     docker compose -f ~/sites/mattermost/docker-compose.yml up -d
+#
+# See ~/sites/docker/DEV-SERVICES.md for the local -> deploy -> repoint workflow.
 
 services:
   db:
     image: postgres:15-alpine
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_USER: mmuser
       POSTGRES_PASSWORD: mmuser_password
@@ -13,14 +23,19 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
+      # interval = steady state, start_interval = only inside start_period, so the
+      # `depends_on: service_healthy` gate below still opens in seconds without
+      # paying for a probe every 5s for as long as the stack is up.
       test: ["CMD-SHELL", "pg_isready -U mmuser -d mattermost"]
-      interval: 5s
+      interval: 30s
+      start_interval: 2s
+      start_period: 30s
       timeout: 3s
-      retries: 20
+      retries: 5
 
   mattermost:
     build: .                       # uses ./Dockerfile (pins the version)
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
