@@ -16,11 +16,11 @@ Mattermost only needs the shim URL + a shared bearer token.
 
 ## Versions (pinned)
 
-- **Server:** `mattermost/mattermost-team-edition:11.9.0` (`Dockerfile`). The `FROM`
+- **Server:** `mattermost/mattermost-team-edition:12.1.0` (`Dockerfile`). The `FROM`
   tag is the version pin — bump it, commit, redeploy.
-- **Agents plugin:** the one bundled with 11.9.0 (`mattermost-ai` v2.4.2, auto-installed
-  via `MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true`) — up from v2.0.5 on the
-  old 11.8.2 pin.
+- **Agents plugin:** bundled with the server, auto-installed via
+  `MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS=true`. Check the running version
+  with `mmctl --local plugin list` after deployment.
 
 ## Local (docker-compose)
 
@@ -62,10 +62,22 @@ forced https. Fix: add a **DNS-only (grey-cloud) A record** `chat → 5.161.107.
 Cloudflare. A specific record disables the wildcard for `chat` (drops the proxied
 IPv6 too), so it resolves straight to the origin with the Let's Encrypt cert.
 
-### Not yet done
+### Persistence and upgrades
 
-- **Persistence:** no `dokku storage:mount` yet — uploads/config/plugins are ephemeral
-  and reset on redeploy. Add mounts for `/mattermost/{data,config,plugins,client/plugins}`
-  (mind the uid-2000 ownership) before relying on it.
-- First admin account + the Agents AI-service config (point it at the `ai-chat-bundle`
-  shim) are done in the System Console after the edge is reachable.
+Production uses PostgreSQL in the dedicated Dokku service `mattermost-db`.
+The database was observed running `postgres:16.0` on 2026-11-25; changing the
+compose image does not upgrade this production service.
+
+Dokku mounts `/platform/mattermost/{data,config,plugins,client-plugins,logs}`
+at the corresponding container directories (`client-plugins` maps to
+`/mattermost/client/plugins`). Configuration and plugin mounts were preserved
+from the previous container before upgrading to 12.1.0.
+
+Before an upgrade, back up PostgreSQL with `pg_dump -Fc` and archive the mounted
+data/config/plugins. The 12.1 upgrade backup is under
+`/var/backups/mattermost/before-12.1-*` on fsn1 (root access only).
+Database schema migrations can make an image-only rollback insufficient; keep
+the matching database and file backup together.
+
+After deployment, check `/api/v4/system/ping`, the server version, and
+`mmctl --local plugin list`. Existing bots and AI services must also be checked.
